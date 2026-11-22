@@ -2,6 +2,7 @@ package com.openzeekr.app.ui
 
 import android.content.Context
 import android.content.Intent
+import android.location.Geocoder
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +39,9 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.Locale
 
 /**
  * Free, key-less map (MapLibre GL + OpenFreeMap vector tiles). Two uses:
@@ -168,7 +174,44 @@ fun CarLocationSection(deps: Deps, modifier: Modifier = Modifier) {
         Box(Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(14.dp))) {
             CarMap(pos?.first, pos?.second, Modifier.matchParentSize())
         }
+        // Street address of the car, reverse-geocoded on-device from its reported GPS position.
+        rememberCarAddress(pos?.first, pos?.second)?.let { addr ->
+            Text(addr, style = MaterialTheme.typography.bodyMedium, color = Brand.muted, modifier = Modifier.fillMaxWidth())
+        }
         if (pos != null) PrimaryButton(stringResource(R.string.map_navigate_to_car), Modifier.fillMaxWidth(), tint = Brand.good) { navigateToCar(ctx, pos.first, pos.second) }
         else GhostButton(stringResource(R.string.map_location_unavailable), Modifier.fillMaxWidth(), enabled = false, tint = Brand.muted) {}
     }
+}
+
+/** Cache of rounded "lat,lon" -> full address line, so recompositions and tab switches don't re-geocode. */
+private val carAddressCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+/**
+ * Reverse-geocode the car's position to a full one-line address (e.g. "12 Main St, 1011 Amsterdam,
+ * Netherlands") with the platform [Geocoder]. Returns null while resolving, when the position is unknown,
+ * or when no geocoder/address is available (the map and navigate button still work without it).
+ * Keyed on ~11 m rounding, so a parked car resolves once and a moving car updates as it goes.
+ */
+@Composable
+private fun rememberCarAddress(lat: Double?, lon: Double?): String? {
+    if (lat == null || lon == null) return null
+    val ctx = LocalContext.current
+    val key = "%.4f,%.4f".format(Locale.US, lat, lon)
+    var label by remember(key) { mutableStateOf(carAddressCache[key]) }
+    LaunchedEffect(key) {
+        if (label != null || !Geocoder.isPresent()) return@LaunchedEffect
+        val resolved = withContext(Dispatchers.IO) {
+            runCatching {
+                @Suppress("DEPRECATION")
+                Geocoder(ctx, Locale.getDefault()).getFromLocation(lat, lon, 1)?.firstOrNull()?.let { a ->
+                    a.getAddressLine(0)
+                        ?: listOfNotNull(a.thoroughfare?.let { t -> listOfNotNull(t, a.subThoroughfare).joinToString(" ") },
+                            a.locality, a.countryName).joinToString(", ").ifBlank { null }
+                }
+            }.getOrNull()
+        } ?: return@LaunchedEffect
+        carAddressCache[key] = resolved
+        label = resolved
+    }
+    return label
 }
