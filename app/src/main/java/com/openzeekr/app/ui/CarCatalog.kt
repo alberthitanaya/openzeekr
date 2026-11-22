@@ -63,7 +63,9 @@ object CarCatalog {
         CarModel("7X", "Zeekr 7X", "cars/car_7x.webp", listOf(
             PaintColor("Forest Green", c(0x436238), "Metallic"),
             PaintColor("Crystal White", c(0xBDC0C3), "Pearl"),
-            PaintColor("Onyx Black", c(0x111111), "Metallic"),
+            // Recolour scale borrowed from the 7GT Onyx Black calibration: a pure #111111 tint crushed the
+            // body to a flat silhouette; this keeps the highlights and panel shading visible.
+            PaintColor("Onyx Black", c(0x111111), "Metallic", recolor = floatArrayOf(0.140f, 0.145f, 0.162f)),
             PaintColor("Tech Grey", c(0x868686), "Metallic"),
             PaintColor("Brookblue", c(0x677FA3), "Two-tone"),
             // AU 7X "Brook Blue/Silver Roof" - vehicle-config API returns this exact name (reported by calvinbui, PR #32)

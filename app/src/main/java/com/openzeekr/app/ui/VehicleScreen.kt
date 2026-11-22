@@ -78,6 +78,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -435,12 +437,22 @@ private fun Hero(
 ) {
     val trans = rememberInfiniteTransition(label = "charge")
     val breathe by trans.animateFloat(0.04f, 0.24f, infiniteRepeatable(tween(2400), RepeatMode.Reverse), label = "breathe")
+    // Two-layer render (7X / 7GT, when supplied in assets/cars/): a greyscale body we recolour to the car's
+    // real paint, plus untouched wheels/glass/trim on top. When present the car itself wears the paint, so
+    // the card goes neutral (a dark paint like Onyx Black would vanish on a paint-coloured card).
+    val body = model.bodyAsset?.let { rememberAssetBitmap(it) }
+    val details = model.detailsAsset?.let { rememberAssetBitmap(it) }
+    val layered = body != null && details != null
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
             // While identity is still loading (info == null) the model/paint default to a placeholder
             // (7GT / Mystic Lilac); use a neutral card + spinner so we never flash that wrong car.
             .height(196.dp).clip(RoundedCornerShape(22.dp))
-            .background(if (loading) SolidColor(Brand.surface2) else Brand.paintCard(paint.color)),
+            .background(when {
+                loading -> SolidColor(Brand.surface2)
+                layered -> LAYERED_CARD_BG
+                else -> Brand.paintCard(paint.color)
+            }),
     ) {
         if (loading) {
             CircularProgressIndicator(Modifier.size(34.dp).align(Alignment.Center), color = Brand.muted, strokeWidth = 3.dp)
@@ -450,14 +462,22 @@ private fun Hero(
             return@Box
         }
         if (charging) Box(Modifier.matchParentSize().background(Brand.energy.copy(alpha = breathe)))
-        // Stock press render (white car) on the paint-tinted card.
-        val bmp = rememberAssetBitmap(model.renderAsset)
-        if (bmp != null) Image(bitmap = bmp, contentDescription = model.displayName,
-            modifier = Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 4.dp).aspectRatio(16f / 8f))
+        val carMod = Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 4.dp).aspectRatio(16f / 8f)
+        if (layered) {
+            // Car painted in its real colour: recoloured body, then details drawn unchanged on top.
+            Image(bitmap = body!!, contentDescription = model.displayName, modifier = carMod,
+                colorFilter = ColorFilter.colorMatrix(paintMatrix(paint)))
+            Image(bitmap = details!!, contentDescription = null, modifier = carMod)
+        } else {
+            // Stock press render (white car) on the paint-tinted card.
+            val bmp = rememberAssetBitmap(model.renderAsset)
+            if (bmp != null) Image(bitmap = bmp, contentDescription = model.displayName, modifier = carMod)
+        }
         Row(Modifier.align(Alignment.BottomStart).padding(14.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Box(Modifier.size(13.dp).clip(CircleShape).background(paint.color))
-            Text(paint.name, color = Color.White.copy(alpha = .92f), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+            Text(paint.name, color = if (layered) Color(0xFF2A2D33) else Color.White.copy(alpha = .92f),
+                fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
         }
         // Being driven: a live-speed badge in the top-right corner (falls back to a "Driving" chip when the
         // car is on but not reporting a road speed). Distinguishes an in-use car from a parked/idle one.
@@ -1124,6 +1144,31 @@ private fun SectionLabel(text: String) =
 
 @Composable
 private fun Divider() = Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(1.dp).background(Brand.line))
+
+/** Light studio backdrop behind a recoloured two-layer render, so dark and light paints both read. */
+private val LAYERED_CARD_BG = Brush.radialGradient(listOf(Color(0xFFCED1D6), Color(0xFFA6A9AF)))
+
+/**
+ * Colour matrix that paints the greyscale body: white -> the paint, with the render's shading kept.
+ * Uses the paint's calibrated per-channel scale when it has one, else a luminance tint from its hex.
+ */
+private fun paintMatrix(p: PaintColor): ColorMatrix {
+    val r: Float; val g: Float; val b: Float
+    val scale = p.recolor
+    if (scale != null) { r = scale.getOrElse(0) { 1f }; g = scale.getOrElse(1) { 1f }; b = scale.getOrElse(2) { 1f } }
+    else { r = p.color.red; g = p.color.green; b = p.color.blue }
+    return if (scale != null) ColorMatrix(floatArrayOf(
+        r, 0f, 0f, 0f, 0f,
+        0f, g, 0f, 0f, 0f,
+        0f, 0f, b, 0f, 0f,
+        0f, 0f, 0f, 1f, 0f,
+    )) else ColorMatrix(floatArrayOf(
+        0.2126f * r, 0.7152f * r, 0.0722f * r, 0f, 0f,
+        0.2126f * g, 0.7152f * g, 0.0722f * g, 0f, 0f,
+        0.2126f * b, 0.7152f * b, 0.0722f * b, 0f, 0f,
+        0f, 0f, 0f, 1f, 0f,
+    ))
+}
 
 /** Load a car render from assets/ (gitignored). Null if absent → hero shows just the colour card. */
 @Composable
