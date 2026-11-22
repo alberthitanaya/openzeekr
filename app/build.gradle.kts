@@ -39,6 +39,14 @@ android {
     }
 
     buildTypes {
+        // Test builds install ALONGSIDE the release app: own package (com.openzeekr.app.dev), own
+        // data/login/digital key, and a "OpenZeekr Dev" launcher label (src/debug/AndroidManifest.xml).
+        // Note the Zeekr cloud allows one session per account and the car has one BLE key slot, so
+        // the two apps still compete for those if both are signed in / both run proximity.
+        debug {
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only overrides: label the test build "OpenZeekr Dev" so it's distinguishable from the
+     release app on the launcher, app switcher and settings. (Package suffix lives in build.gradle.kts.) -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:label="OpenZeekr Dev"
+        tools:replace="android:label">
+        <activity
+            android:name=".MainActivity"
+            android:label="OpenZeekr Dev"
+            tools:replace="android:label" />
+    </application>
+</manifest>
